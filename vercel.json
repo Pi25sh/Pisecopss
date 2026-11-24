@@ -1,0 +1,16 @@
+{
+  "rewrites": [
+    {
+      "source": "/mumbai-data/:match*",
+      "destination": "https://mumbai-3d.easemyhood.workers.dev/d/05dfa6689f/:match*"
+    },
+    {
+      "source": "/mumbai-3d",
+      "destination": "/mumbai-3d/index.html"
+    },
+    {
+      "source": "/mumbai-3d/",
+      "destination": "/mumbai-3d/index.html"
+    }
+  ]
+}
