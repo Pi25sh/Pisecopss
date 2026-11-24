@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>FBX to GLB Converter</title>
+</head>
+<body>
+  <h1>Converting Ch42 + Animations to GLB...</h1>
+  <div id="status">Starting...</div>
+
+  <script type="module">
+    import * as THREE from '/node_modules/three/build/three.module.js';
+    import { FBXLoader } from '/node_modules/three/examples/jsm/loaders/FBXLoader.js';
+    import { GLTFExporter } from '/node_modules/three/examples/jsm/exporters/GLTFExporter.js';
+
+    window.__status = 'Loading FBX...';
+    window.__done = false;
+    window.__error = null;
+
+    async function run() {
+      try {
+        const loader = new FBXLoader();
+        
+        console.log('Loading Ch42_nonPBR.fbx...');
+        document.getElementById('status').innerText = 'Loading Ch42_nonPBR.fbx...';
+        const ch42 = await loader.loadAsync('/assets/characters/Ch42_nonPBR.fbx');
+        console.log('Ch42 loaded!');
+
+        console.log('Loading Walking.fbx...');
+        document.getElementById('status').innerText = 'Loading Walking.fbx...';
+        const walkFbx = await loader.loadAsync('/assets/animations/Walking.fbx');
+        const walkClip = walkFbx.animations[0];
+        walkClip.name = 'walk';
+        console.log('Walking loaded, tracks:', walkClip.tracks.length);
+
+        console.log('Loading Running.fbx...');
+        document.getElementById('status').innerText = 'Loading Running.fbx...';
+        const runFbx = await loader.loadAsync('/assets/animations/Running.fbx');
+        const runClip = runFbx.animations[0];
+        runClip.name = 'run';
+        console.log('Running loaded, tracks:', runClip.tracks.length);
+
+        // Normalize character scale to 0.01 (meters)
+        ch42.scale.set(0.01, 0.01, 0.01);
+        ch42.updateMatrixWorld(true);
+
+        // Optimize materials for AAA PBR rendering
+        ch42.traverse((child) => {
+          if (child.isMesh) {
+            child.castShadow = true;
+            child.receiveShadow = true;
+            if (child.material) {
+              const mats = Array.isArray(child.material) ? child.material : [child.material];
+              mats.forEach((m) => {
+                m.roughness = 0.42;
+                m.metalness = 0.25;
+                m.needsUpdate = true;
+              });
+            }
+          }
+        });
+
+        console.log('Exporting GLB with embedded animations...');
+        document.getElementById('status').innerText = 'Exporting GLB...';
+
+        const exporter = new GLTFExporter();
+        exporter.parse(
+          ch42,
+          (glb) => {
+            console.log('GLB exported! Size:', glb.byteLength);
+            // Convert ArrayBuffer to Base64
+            const bytes = new Uint8Array(glb);
+            let binary = '';
+            const chunkSize = 32768;
+            for (let i = 0; i < bytes.length; i += chunkSize) {
+              binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunkSize));
+            }
+            window.__glbBase64 = btoa(binary);
+            window.__done = true;
+            document.getElementById('status').innerText = 'Done! GLB size: ' + glb.byteLength;
+            fetch('http://127.0.0.1:8999/', {
+              method: 'POST',
+              body: glb
+            }).catch(e => console.warn('Server fetch:', e));
+          },
+          (err) => {
+            console.error('Export error:', err);
+            window.__error = String(err);
+          },
+          {
+            binary: true,
+            animations: [walkClip, runClip],
+            embedImages: true
+          }
+        );
+      } catch (e) {
+        console.error('Exception during conversion:', e);
+        window.__error = String(e);
+      }
+    }
+
+    run();
+  </script>
+</body>
+</html>
