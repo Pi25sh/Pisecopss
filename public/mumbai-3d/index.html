@@ -1,0 +1,644 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="description" content="Interactive 3D model of Greater Mumbai built from real map data: 594,000 buildings, published tower heights, landmarks, traffic and time-of-day lighting.">
+<meta property="og:title" content="Mumbai 3D">
+<meta property="og:description" content="Interactive 3D model of Greater Mumbai built from real map data: 594,000 buildings, published tower heights, landmarks, traffic and time-of-day lighting.">
+<meta name="theme-color" content="#0a111e">
+<link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2032%2032%22%3E%3Crect%20width%3D%2232%22%20height%3D%2232%22%20rx%3D%226%22%20fill%3D%22%230a111e%22%2F%3E%3Cpath%20d%3D%22M5%2025V15h4v10zm6%200V8h5v17zm7%200V12h4v13zm6%200v-7h3v7z%22%20fill%3D%22%23ffb454%22%2F%3E%3C%2Fsvg%3E">
+<style>:root{padding:env(safe-area-inset-top,0px) 0 env(safe-area-inset-bottom,0px)}body{margin:0}img{max-width:100%}[hidden]{display:none!important}</style>
+<title>Mumbai 3D</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Josefin+Sans:wght@400;600&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+  /* Layout: one full-bleed 3D view; instruments float at the four corners like a chart's marginalia. */
+  :root {
+    color-scheme: dark;
+    --ink: #0a111e;            /* night harbour */
+    --panel: rgba(10, 17, 30, 0.74);
+    --panel-solid: #101a2b;
+    --line: rgba(232, 238, 248, 0.16);
+    --text: #eef1f6;
+    --muted: #a7b1c2;
+    --lamp: #ffb454;           /* sodium street light: the Queen's Necklace */
+    --lamp-ink: #2a1a04;
+    --sea: #7fbfd0;
+    --display: "Josefin Sans", "Century Gothic", "Futura", sans-serif;
+    --ui: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+    --mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  }
+  html, body { height: 100%; }
+  body { background: var(--ink); color: var(--text); font-family: var(--ui); font-size: 14px; overflow: hidden; }
+  #app { position: relative; height: 100%; overflow: hidden; }
+  #view { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; outline: none; }
+  #labels { display: none !important; }
+
+  .lbl { position: absolute; left: 0; top: 0; white-space: nowrap; will-change: transform; color: var(--text);
+    text-shadow: 0 1px 2px rgba(4, 8, 16, 0.95), 0 0 6px rgba(4, 8, 16, 0.8); font-size: 12px; line-height: 1.2; }
+  .lbl.poi { font-weight: 600; font-size: 12.5px; }
+  .lbl.poi::before { content: ""; display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--lamp);
+    margin-right: 6px; vertical-align: 1px; box-shadow: 0 0 0 2px rgba(10, 17, 30, 0.7); }
+  .lbl.ward { font-family: var(--display); text-transform: uppercase; letter-spacing: 0.16em; font-size: 11px; color: #ffd9a0; }
+  .lbl.hood { color: #dde3ee; font-size: 11.5px; }
+  .lbl.town { font-weight: 600; font-size: 12.5px; }
+  .lbl.region { font-family: var(--display); text-transform: uppercase; letter-spacing: 0.2em; font-size: 12px; color: #ffcf86; }
+  .lbl.tower { font-family: var(--mono); font-size: 10.5px; color: #cfe6ee; }
+
+  .hud { position: absolute; inset: 0; pointer-events: none; display: grid; grid-template-rows: auto 1fr auto; gap: 10px;
+    padding-block: 14px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+  .hud > * { min-width: 0; }
+  .row { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+  .row.bottom { align-items: flex-end; }
+  .panel { pointer-events: auto; background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
+    -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); }
+
+  .title { padding: 10px 14px 9px; max-width: min(100%, 420px); }
+  .title h1 { margin: 0; font-family: var(--display); font-weight: 600; font-size: 22px; letter-spacing: 0.3em; line-height: 1.1; text-wrap: balance; }
+  .title h1 span { letter-spacing: 0; font-family: var(--ui); font-weight: 400; color: var(--lamp); margin-left: 4px; font-size: 18px; }
+  .title p { margin: 5px 0 0; color: var(--muted); font-size: 12px; line-height: 1.35; }
+  .title p b { color: var(--text); font-weight: 500; font-variant-numeric: tabular-nums; }
+  .cta { display: inline-flex; align-items: center; gap: 6px; margin-top: 9px; padding: 7px 11px; border-radius: 7px; font-size: 12.5px; font-weight: 500; line-height: 1;
+    color: #ffe0b0; text-decoration: none; background: rgba(255, 180, 84, 0.16); border: 1px solid rgba(255, 180, 84, 0.5); }
+  .cta:hover { background: rgba(255, 180, 84, 0.28); border-color: rgba(255, 180, 84, 0.85); color: #fff0d6; }
+
+  .tools { display: flex; gap: 8px; align-items: center; padding: 6px; flex-wrap: wrap; max-width: 100%; }
+  button, select { font: inherit; color: var(--text); }
+  .btn { background: transparent; border: 1px solid transparent; border-radius: 7px; padding: 7px 10px; cursor: pointer; line-height: 1; }
+  .btn:hover { background: rgba(255, 255, 255, 0.08); }
+  .btn[aria-pressed="true"] { background: rgba(255, 180, 84, 0.16); border-color: rgba(255, 180, 84, 0.5); color: #ffe0b0; }
+  :focus-visible { outline: 2px solid var(--lamp); outline-offset: 2px; }
+  select.btn { border-color: var(--line); background: rgba(255, 255, 255, 0.04); padding: 6px 8px; }
+  select.btn option { background: var(--panel-solid); color: var(--text); }
+  #compass { width: 34px; height: 34px; border-radius: 50%; border: 1px solid var(--line); background: rgba(255, 255, 255, 0.04); cursor: pointer; padding: 0; display: grid; place-items: center; }
+  #compass svg { display: block; }
+
+  .readout { padding: 9px 13px; min-width: 0; }
+  .readout .where { font-weight: 600; font-size: 14px; }
+  .readout .coords { font-family: var(--mono); font-size: 11.5px; color: var(--muted); margin-top: 3px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+  .controls { display: flex; flex-direction: column; gap: 8px; padding: 10px 12px; width: min(100%, 560px); min-width: 0; }
+  .chips { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; padding-bottom: 1px; }
+  .chips::-webkit-scrollbar { display: none; }
+  .chip { flex: none; border: 1px solid var(--line); background: rgba(255, 255, 255, 0.04); border-radius: 999px; padding: 6px 11px; cursor: pointer; font-size: 12.5px; line-height: 1; }
+  .chip:hover { border-color: rgba(255, 180, 84, 0.6); color: #ffe0b0; }
+  .timebar { display: flex; align-items: center; gap: 10px; min-width: 0; }
+  .timebar label { font-family: var(--mono); font-size: 12.5px; font-variant-numeric: tabular-nums; white-space: nowrap; min-width: 9.5ch; }
+  .timebar input[type=range] { flex: 1; min-width: 60px; accent-color: var(--lamp); }
+  .timebar .btn { padding: 6px 8px; font-size: 12px; border-color: var(--line); white-space: nowrap; }
+  .eyebrow { font-family: var(--display); text-transform: uppercase; letter-spacing: 0.18em; font-size: 10.5px; color: var(--muted); }
+
+  #hint { align-self: center; justify-self: center; pointer-events: none; padding: 8px 14px; font-size: 12.5px; color: var(--muted); transition: opacity 0.6s; text-align: center; }
+  #hint.gone { opacity: 0; }
+
+  #about { position: absolute; top: 0; right: 0; bottom: 0; width: min(430px, 100%); background: var(--panel-solid); border-left: 1px solid var(--line);
+    padding: calc(18px + env(safe-area-inset-top, 0px)) max(18px, env(safe-area-inset-right, 0px)) calc(18px + env(safe-area-inset-bottom, 0px)) 18px;
+    overflow-y: auto; pointer-events: auto; z-index: 5; line-height: 1.5; }
+  #about h2 { font-family: var(--display); font-weight: 600; letter-spacing: 0.14em; text-transform: uppercase; font-size: 15px; margin: 0 0 4px; }
+  #about h3 { font-size: 13px; margin: 18px 0 6px; color: var(--lamp); font-weight: 600; }
+  #about p, #about li { color: #d5dbe6; font-size: 13px; margin: 0 0 8px; }
+  #about ul { padding-left: 18px; margin: 0; }
+  #about .close { position: sticky; top: 0; float: right; border-color: var(--line); background: var(--panel-solid); }
+  .bars { display: grid; grid-template-columns: auto 1fr auto; gap: 6px 10px; align-items: center; font-size: 12.5px; margin: 8px 0 4px; }
+  .bars .bar { height: 8px; border-radius: 4px; background: rgba(255, 255, 255, 0.08); overflow: hidden; }
+  .bars .bar i { display: block; height: 100%; background: var(--sea); border-radius: 4px; }
+  .bars .bar i.est { background: var(--lamp); }
+  .bars .bar i.def { background: #8892a6; }
+  .bars span.n { font-family: var(--mono); font-variant-numeric: tabular-nums; color: var(--muted); }
+
+  #loading { position: absolute; inset: 0; display: grid; place-items: center; background: radial-gradient(120% 90% at 50% 100%, #1b2a44 0%, var(--ink) 62%);
+    z-index: 10; transition: opacity 0.9s; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+  #loading.done { opacity: 0; pointer-events: none; }
+  #loading .card { text-align: center; width: min(100%, 380px); }
+  #loading h1 { font-family: var(--display); letter-spacing: 0.34em; font-weight: 600; font-size: 28px; margin: 0 0 6px; padding-left: 0.34em; }
+  #loading p { color: var(--muted); margin: 0 0 16px; font-size: 13px; }
+  #loading .meter { height: 3px; background: rgba(255, 255, 255, 0.12); border-radius: 2px; overflow: hidden; }
+  #loading .meter i { display: block; height: 100%; width: 4%; background: var(--lamp); transition: width 0.3s; }
+  #loading .err { color: #ffb4a8; margin-top: 14px; font-size: 13px; }
+
+  @media (max-width: 640px) {
+    .title h1 { font-size: 18px; } .title p { display: none; }
+    .cta { margin-top: 7px; padding: 6px 9px; font-size: 12px; }
+    .tools { gap: 4px; } .tools .btn { padding: 7px 8px; }
+    #hint .kb { display: none; }
+    .controls { width: 100%; box-sizing: border-box; } .row.bottom { flex-direction: column; align-items: stretch; }
+    .timebar .btn.opt { display: none; }
+    .readout .where { font-size: 13px; }
+  }
+  @media (prefers-reduced-motion: reduce) { #loading, #hint, #loading .meter i { transition: none; } }
+  /* Mini-map of Mumbai */
+  #mumbaiMinimapContainer {
+    position: absolute;
+    bottom: 24px;
+    left: 24px;
+    z-index: 1000;
+    pointer-events: auto;
+  }
+  .minimap-bezel {
+    background: rgba(8, 16, 28, 0.92);
+    border: 2px solid rgba(0, 240, 255, 0.55);
+    border-radius: 18px;
+    padding: 8px 10px 10px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.8), 0 0 15px rgba(0, 240, 255, 0.25);
+    backdrop-filter: blur(12px);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+  }
+  .minimap-header {
+    width: 100%;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 10.5px;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+  }
+  .minimap-title { color: #00f0ff; font-family: 'Josefin Sans', sans-serif; }
+  .minimap-sub { color: #ffb454; font-size: 9px; font-family: 'IBM Plex Mono', monospace; }
+  .minimap-canvas-wrap {
+    position: relative;
+    width: 220px;
+    height: 220px;
+    border-radius: 50%;
+    overflow: hidden;
+    border: 1.5px solid rgba(0, 240, 255, 0.4);
+    box-shadow: inset 0 0 20px rgba(0, 0, 0, 0.8);
+  }
+  #mumbaiMinimapCanvas {
+    display: block;
+    width: 220px;
+    height: 220px;
+  }
+  .minimap-compass-n {
+    position: absolute;
+    top: 6px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-family: 'IBM Plex Mono', monospace;
+    font-weight: 900;
+    font-size: 11px;
+    color: #ff3366;
+    text-shadow: 0 0 4px #000;
+  }
+  .minimap-footer {
+    width: 100%;
+    display: flex;
+    justify-content: space-between;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    padding-top: 2px;
+  }
+
+  /* Virtual Computer Screen (Full Screen Hacker OS) */
+  .cyber-screen-container {
+    position: fixed;
+    inset: 0;
+    z-index: 999999;
+    background: #03080e;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: 'IBM Plex Mono', monospace;
+  }
+  .cyber-monitor-frame {
+    position: relative;
+    width: 100vw;
+    height: 100vh;
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    background: #050d18;
+    overflow: hidden;
+  }
+  .cyber-scanlines {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.35) 50%);
+    background-size: 100% 4px;
+    z-index: 10;
+    opacity: 0.75;
+  }
+  .cyber-vignette {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    box-shadow: inset 0 0 100px rgba(0, 0, 0, 0.9);
+    z-index: 11;
+  }
+  .cyber-window {
+    position: relative;
+    z-index: 5;
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    padding: 16px 24px;
+    box-sizing: border-box;
+    gap: 14px;
+  }
+  .cyber-os-bar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 16px;
+    background: rgba(10, 24, 42, 0.95);
+    border: 1px solid rgba(0, 240, 255, 0.45);
+    border-radius: 8px;
+    box-shadow: 0 0 15px rgba(0, 240, 255, 0.2);
+  }
+  .mumbai-police-badge {
+    color: #ffb454;
+    font-weight: 700;
+    font-size: 15px;
+    margin-right: 14px;
+    letter-spacing: 0.05em;
+  }
+  .cyber-deck-version {
+    color: #00f0ff;
+    font-size: 12px;
+    opacity: 0.85;
+  }
+  .cyber-system-status {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+  }
+  .status-indicator {
+    color: #00ff88;
+    font-size: 12px;
+    font-weight: bold;
+    animation: blink 1.2s infinite;
+  }
+  .target-node-id {
+    color: #a7b1c2;
+    font-size: 12px;
+  }
+  .cyber-win-btn {
+    background: rgba(255, 51, 102, 0.2);
+    border: 1px solid #ff3366;
+    color: #ff3366;
+    font-weight: bold;
+    border-radius: 4px;
+    padding: 3px 10px;
+    cursor: pointer;
+  }
+  .cyber-win-btn:hover { background: #ff3366; color: #fff; }
+
+  .cyber-main-layout {
+    display: grid;
+    grid-template-columns: 320px 1fr 340px;
+    gap: 16px;
+    flex: 1;
+    min-height: 0;
+  }
+  .cyber-col {
+    background: rgba(8, 19, 34, 0.88);
+    border: 1px solid rgba(0, 240, 255, 0.25);
+    border-radius: 8px;
+    padding: 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    box-shadow: inset 0 0 20px rgba(0, 0, 0, 0.6);
+  }
+  .cyber-col-title {
+    font-size: 12px;
+    font-weight: bold;
+    color: #00f0ff;
+    letter-spacing: 0.08em;
+    border-bottom: 1px solid rgba(0, 240, 255, 0.2);
+    padding-bottom: 6px;
+  }
+  .subnet-label {
+    font-size: 10.5px;
+    color: #ffb454;
+  }
+  .node-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .node-item {
+    background: rgba(14, 28, 48, 0.7);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 6px;
+    padding: 8px 10px;
+    font-size: 11px;
+    transition: all 0.2s;
+  }
+  .node-item.active-target {
+    border-color: #ff3366;
+    background: rgba(255, 51, 102, 0.12);
+    box-shadow: 0 0 10px rgba(255, 51, 102, 0.3);
+  }
+  .target-pill {
+    display: inline-block;
+    margin-top: 4px;
+    background: #ff3366;
+    color: #fff;
+    font-size: 9px;
+    font-weight: bold;
+    padding: 2px 6px;
+    border-radius: 3px;
+  }
+  .mission-contract-box {
+    margin-top: auto;
+    background: rgba(0, 240, 255, 0.06);
+    border: 1px solid rgba(0, 240, 255, 0.25);
+    border-radius: 6px;
+    padding: 10px;
+    font-size: 11px;
+    line-height: 1.45;
+  }
+  .contract-title {
+    color: #ffb454;
+    font-weight: bold;
+    font-size: 11.5px;
+    margin-bottom: 6px;
+  }
+  .contract-body {
+    color: #c5d0e0;
+  }
+
+  /* Center Terminal */
+  .terminal-screen {
+    flex: 1;
+    background: #02060b;
+    border: 1px solid rgba(0, 240, 255, 0.2);
+    border-radius: 6px;
+    padding: 12px;
+    overflow-y: auto;
+    font-size: 12px;
+    line-height: 1.5;
+    color: #00ff88;
+    box-shadow: inset 0 0 15px rgba(0, 0, 0, 0.9);
+  }
+  .term-line.info { color: #00f0ff; }
+  .term-line.warn { color: #ffd9a0; }
+  .terminal-actions {
+    display: flex;
+    gap: 10px;
+  }
+  .cyber-btn {
+    flex: 1;
+    background: rgba(0, 240, 255, 0.1);
+    border: 1px solid #00f0ff;
+    color: #00f0ff;
+    padding: 10px 12px;
+    border-radius: 6px;
+    font-family: inherit;
+    font-size: 11.5px;
+    font-weight: bold;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+  .cyber-btn:hover:not(:disabled) {
+    background: rgba(0, 240, 255, 0.3);
+    box-shadow: 0 0 12px rgba(0, 240, 255, 0.4);
+  }
+  .cyber-btn:disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
+    border-color: #445;
+    color: #667;
+  }
+  .cyber-btn-target { border-color: #ff3366; color: #ff3366; background: rgba(255, 51, 102, 0.12); }
+  .cyber-btn-target:hover:not(:disabled) { background: rgba(255, 51, 102, 0.3); }
+
+  /* Extraction Progress Bar */
+  .extraction-progress-wrap {
+    background: rgba(10, 20, 32, 0.95);
+    border: 1px solid rgba(0, 240, 255, 0.3);
+    border-radius: 6px;
+    padding: 10px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .progress-labels {
+    display: flex;
+    justify-content: space-between;
+    font-size: 11.5px;
+    font-weight: bold;
+    color: #00f0ff;
+  }
+  .progress-track {
+    width: 100%;
+    height: 12px;
+    background: rgba(0, 0, 0, 0.8);
+    border: 1px solid rgba(0, 240, 255, 0.4);
+    border-radius: 6px;
+    overflow: hidden;
+  }
+  .progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #00f0ff, #00ff88);
+    box-shadow: 0 0 10px #00ff88;
+    transition: width 0.15s;
+  }
+  .progress-sub {
+    font-size: 10.5px;
+    color: #8892a6;
+  }
+
+  /* Right Column Dossier */
+  .dossier-card {
+    background: rgba(14, 28, 48, 0.7);
+    border: 1px solid rgba(0, 240, 255, 0.35);
+    border-radius: 6px;
+    padding: 12px;
+  }
+  .dossier-header {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    padding-bottom: 10px;
+    margin-bottom: 10px;
+  }
+  .file-icon { font-size: 26px; }
+  .file-name { color: #00f0ff; font-weight: bold; font-size: 12px; }
+  .file-meta { color: #8892a6; font-size: 10.5px; }
+  .dossier-details p { margin: 6px 0; font-size: 11.5px; color: #a7b1c2; }
+  .badge-pending {
+    background: rgba(255, 180, 84, 0.2);
+    color: #ffb454;
+    border: 1px solid #ffb454;
+    padding: 2px 6px;
+    border-radius: 3px;
+    font-size: 10px;
+    font-weight: bold;
+  }
+  .badge-extracted {
+    background: rgba(0, 255, 136, 0.2);
+    color: #00ff88;
+    border: 1px solid #00ff88;
+    padding: 2px 6px;
+    border-radius: 3px;
+    font-size: 10px;
+    font-weight: bold;
+  }
+
+  .enter-world-btn {
+    width: 100%;
+    padding: 14px;
+    background: rgba(0, 240, 255, 0.2);
+    border: 2px solid #00f0ff;
+    color: #00f0ff;
+    font-family: inherit;
+    font-size: 13.5px;
+    font-weight: bold;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.3s;
+    text-align: center;
+    line-height: 1.3;
+  }
+  .enter-world-btn.pulse-ready {
+    background: linear-gradient(135deg, rgba(0, 255, 136, 0.4), rgba(0, 240, 255, 0.4));
+    border-color: #00ff88;
+    color: #fff;
+    box-shadow: 0 0 20px rgba(0, 255, 136, 0.6);
+    animation: pulseGlow 1.5s infinite;
+  }
+  .enter-world-btn:hover:not(:disabled) {
+    background: rgba(0, 255, 136, 0.6);
+    color: #fff;
+  }
+  .enter-world-btn:disabled {
+    opacity: 0.3;
+    cursor: not-allowed;
+    border-color: #445;
+  }
+
+  /* 3D Prompt */
+  .pc-interaction-prompt {
+    position: absolute;
+    bottom: 120px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(8, 16, 28, 0.95);
+    border: 2px solid #ff3366;
+    color: #fff;
+    padding: 10px 24px;
+    border-radius: 30px;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 13.5px;
+    font-weight: bold;
+    letter-spacing: 0.05em;
+    box-shadow: 0 0 25px rgba(255, 51, 102, 0.5);
+    z-index: 1000;
+    pointer-events: none;
+    text-align: center;
+  }
+
+  @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+  @keyframes pulseGlow { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.02); } }
+</style>
+
+</head>
+<body>
+<div id="app">
+  <canvas id="view" tabindex="0" aria-label="Interactive 3D model of Greater Mumbai"></canvas>
+  <div id="labels" aria-hidden="true"></div>
+
+  <div class="hud">
+    <div class="row">
+      <!-- Mumbai Police Cyber Operative HUD Panel -->
+      <div class="panel game-hud-card" style="padding: 12px 18px; background: rgba(8, 16, 28, 0.9); border: 1.5px solid rgba(0, 240, 255, 0.5); border-radius: 12px; backdrop-filter: blur(12px); box-shadow: 0 4px 25px rgba(0, 0, 0, 0.8), 0 0 15px rgba(0, 240, 255, 0.2);">
+        <div style="display: flex; align-items: center; justify-content: space-between; gap: 16px;">
+          <div style="display: flex; align-items: center; gap: 10px;">
+            <div style="font-family: 'Josefin Sans', sans-serif; font-weight: 700; font-size: 16px; letter-spacing: 0.15em; color: #00f0ff; text-shadow: 0 0 10px rgba(0,240,255,0.5);">
+              🛡️ MUMBAI POLICE <span style="color: #ffb454; font-weight: 400; font-size: 13px;">CYBER CRIME CELL</span>
+            </div>
+            <span style="background: rgba(0, 255, 136, 0.15); border: 1px solid rgba(0, 255, 136, 0.4); color: #00ff88; font-size: 10px; font-weight: bold; padding: 2px 8px; border-radius: 4px; text-transform: uppercase;">
+              Special Hacker Operative
+            </span>
+          </div>
+
+          <button id="btnOpenDeckHUD" style="background: rgba(0, 240, 255, 0.15); border: 1.5px solid #00f0ff; color: #00f0ff; font-family: 'IBM Plex Mono', monospace; font-size: 11px; font-weight: bold; padding: 5px 12px; border-radius: 6px; cursor: pointer; display: flex; align-items: center; gap: 6px;" title="Open Virtual Computer Screen (Press T)">
+            💻 TACTICAL CYBER DECK [T]
+          </button>
+        </div>
+
+        <div id="mumbaiMissionBanner" style="margin-top: 6px; font-size: 12px; font-family: 'IBM Plex Mono', monospace; background: rgba(0, 240, 255, 0.08); padding: 5px 10px; border-radius: 6px; border-left: 3px solid #ff3366;">
+          <span style="color: #ff3366; font-weight: bold;">OBJECTIVE:</span>
+          <span style="color: #ffd9a0;"> Target the Rogue PC on Gateway Promenade & Extract Classified Evidence File.</span>
+        </div>
+
+        <div style="margin-top: 6px; font-size: 11.5px; color: #a7b1c2; display: flex; gap: 14px; align-items: center;">
+          <span id="playerHealth" style="color: #00ff88; font-weight: 600;">❤️ HP 100%</span>
+          <span id="playerStamina" style="color: #00f0ff; font-weight: 600;">⚡ STM 100%</span>
+          <span id="cameraModeText" style="color: #ffd9a0;">🎥 Third-Person [V to toggle]</span>
+          <span style="color: #8892a6; margin-left: auto; font-family: 'IBM Plex Mono', monospace; font-size: 11px;">
+            WASD: Move · Shift: Sprint · Space: Jump · E: Enter Santro Taxi · T: Cyber Deck
+          </span>
+        </div>
+      </div>
+    </div>
+
+    <div id="hint" class="panel">WASD to Walk/Drive · Shift to Sprint · Space to Jump · E to Enter Santro Taxi · T for Cyber Deck</div>
+
+    <!-- Vehicle Interaction Prompt -->
+    <div id="vehiclePrompt" style="display: none; position: absolute; bottom: 120px; left: 50%; transform: translateX(-50%); background: rgba(10, 17, 30, 0.94); border: 1.5px solid #ffb454; padding: 9px 22px; border-radius: 30px; font-family: sans-serif; font-size: 13.5px; color: #ffe0b0; box-shadow: 0 4px 25px rgba(255, 180, 84, 0.4); z-index: 1000; pointer-events: none; letter-spacing: 0.04em;"></div>
+
+    <!-- Vehicle Speedometer HUD -->
+    <div id="vehicleSpeedo" style="display: none; position: absolute; bottom: 25px; right: 28px; background: rgba(10, 17, 30, 0.92); border: 1px solid rgba(0, 240, 255, 0.5); border-radius: 14px; padding: 10px 18px; color: #fff; font-family: 'IBM Plex Mono', monospace; z-index: 1000; align-items: baseline; gap: 6px; box-shadow: 0 4px 20px rgba(0, 240, 255, 0.25);">
+      <div style="font-size: 34px; font-weight: bold; color: #00f0ff; min-width: 45px; text-align: right;" id="speedoValue">0</div>
+      <div style="font-size: 12px; color: #8892a6; font-weight: 600;">KM/H</div>
+      <div style="font-size: 15px; color: #ffb454; font-weight: bold; margin-left: 10px; background: rgba(255,180,84,0.18); padding: 2px 7px; border-radius: 6px; border: 1px solid rgba(255,180,84,0.4);" id="speedoGear">N</div>
+    </div>
+
+    <!-- Real-time Mini-map of Mumbai Radar -->
+    <div id="mumbaiMinimapContainer"></div>
+
+    <!-- Hidden compatibility stubs for background engine -->
+    <div id="legacyMapControls" style="display: none;" aria-hidden="true">
+      <div id="subtitle"></div>
+      <div id="places"></div>
+      <div id="where"></div>
+      <div id="coords"></div>
+      <button id="needle"></button>
+      <input id="time" type="range" min="0" max="24" value="16.9">
+      <div id="timeLabel"></div>
+      <button id="btnLabels"></button>
+      <button id="btnWards"></button>
+      <button id="btnRegion"></button>
+      <select id="quality"><option value="auto">Auto</option></select>
+      <button id="compass"></button>
+      <button id="btnAbout"></button>
+      <button id="aboutClose"></button>
+      <div id="heightBars"></div>
+      <div id="heightNote"></div>
+      <div id="sources"></div>
+    </div>
+  </div>
+
+  <aside id="about" hidden></aside>
+
+  <div id="loading">
+    <div class="card">
+      <h1>MUMBAI</h1>
+      <p id="loadText">Laying out terrain and coastline</p>
+      <div class="meter"><i id="loadBar"></i></div>
+      <div class="err" id="loadErr" hidden></div>
+    </div>
+  </div>
+</div>
+
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+} }
+</script>
+<script>window.MUMBAI_DATA = "/mumbai-data/";</script>
+<script>if("serviceWorker" in navigator){navigator.serviceWorker.register("/sw-cache.js",{scope:"/"}).catch(function(){});}</script>
+<script type="module" src="./src/main.js"></script>
+<!-- Cloudflare Web Analytics (cookieless page-view counts). Only in the Cloudflare build; the token is the public site id. -->
+<!-- Analytics disabled -->
+</body>
+</html>
